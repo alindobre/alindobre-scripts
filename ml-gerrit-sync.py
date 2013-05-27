@@ -53,7 +53,7 @@ if len(msg_str)==0:
 def git_cmd(cmd, stdin=None):
 	"""\
 	Executes a git command and returns the result and displays error information,
-	if case. The function returns a tuple (return code, command stdout, command stderr).
+	if case. The function returns a tuple (return code, command stdout).
 	"""
 	# We are using the subprocess.Popen() class to run the command, because it's
 	# highly backwards compatible with Python 2.6 and onwards.
@@ -63,13 +63,12 @@ def git_cmd(cmd, stdin=None):
 		cmd_info.append("< %s" % stdin.name)
 	#print >>sys.stderr, " ".join(cmd_info)
 
-	pgit=subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=stdin)
+	#pgit=subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=stdin)
+	pgit=subprocess.Popen(cmd, stdin=stdin, stdout=subprocess.PIPE)
 
 	# To be able to get the command's return code, we have to call the wait()
 	# method and wait for the program execution to finish.
-	pgit.wait()
-	git_stdout=pgit.stdout.readlines()
-	git_stderr=pgit.stderr.readlines()
+	(git_stdout, git_stderr)=pgit.communicate()
 
 	if pgit.returncode == 0:
 		clean_exit=True
@@ -79,8 +78,7 @@ def git_cmd(cmd, stdin=None):
 	if not clean_exit:
 		print >>sys.stderr, "Could not run git command. Giving up."
 		sys.exit(3)
-
-	return (pgit.returncode, git_stdout, git_stderr)
+	return (pgit.returncode, git_stdout)
 
 import subprocess
 import email
@@ -121,21 +119,19 @@ os.rename(msg_quick_path, msg_id_file)
 os.rename("%s-msg"%msg_quick_path, os.path.join(msg_id_dir, "git-mailinfo-msg"))
 os.rename("%s-patch"%msg_quick_path, os.path.join(msg_id_dir, "git-mailinfo-patch"))
 
-# git remote add --mirror=fetch upstream "git://git.openembedded.org/openembedded-core"
-# git remote add --mirror=push downstream ssh://localgerrit/openembedded-core
-# git fetch upstream
-# git push downstream
 git_cache_bare_dir=os.path.join(git_cache_dir, "bare", msg_list_id)
-(ret, us_out, serr) = git_cmd(["git", "init", "--bare", git_cache_bare_dir])
-print "".join(us_out)
-(ret, us_out, serr) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=fetch", "upstream", repos[msg_list_id]["url"]])
-print "".join(us_out)
-(ret, us_out, serr) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=push", "downstream", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"])])
-print "".join(us_out)
-(ret, us_out, serr) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "fetch", "upstream"])
-print "".join(us_out)
-(ret, us_out, serr) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "push", "downstream"])
-print "".join(us_out)
+(ret, sout) = git_cmd(["git", "init", "--bare", git_cache_bare_dir])
+(ret, sout) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=fetch", "upstream", repos[msg_list_id]["url"]])
+(ret, sout) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=push", "downstream", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"])])
+(ret, sout) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "fetch", "upstream"])
+(ret, sout) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "push", "downstream"])
+
+# example of usage when importing repo's own Git command handling
+#sys.path.insert(0, "/mnt/ssd/alin/extra/.repo/repo")
+#from git_command import GitCommand
+#p = GitCommand(None, ["--git-dir", git_cache_bare_dir, "fetch", "upstream"])
+#p.Wait()
+
 #(ret, us_out, serr) = git_cmd(["git", "ls-remote", repos[msg_list_id]["url"]])
 #(ret, ds_out, serr) = git_cmd(["git", "ls-remote", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"])])
 
