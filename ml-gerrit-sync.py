@@ -125,10 +125,17 @@ os.rename("%s-patch"%msg_quick_path, os.path.join(msg_id_dir, "git-mailinfo-patc
 # git remote add --mirror=push downstream ssh://localgerrit/openembedded-core
 # git fetch upstream
 # git push downstream
-#it_cache_bare_dir=os.path.join(git_cache_dir, "bare", msg_id_dir)
-#ret, us_out, serr) = git_cmd(["git", "init", "--bare", git_cache_bare_dir])
-#ret, us_out, serr) = git_cmd(["git", "--git-dir", git_cache_bare_dir])
-#rint "".join(us_out)
+git_cache_bare_dir=os.path.join(git_cache_dir, "bare", msg_list_id)
+(ret, us_out, serr) = git_cmd(["git", "init", "--bare", git_cache_bare_dir])
+print "".join(us_out)
+(ret, us_out, serr) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=fetch", "upstream", repos[msg_list_id]["url"]])
+print "".join(us_out)
+(ret, us_out, serr) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=push", "downstream", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"])])
+print "".join(us_out)
+(ret, us_out, serr) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "fetch", "upstream"])
+print "".join(us_out)
+(ret, us_out, serr) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "push", "downstream"])
+print "".join(us_out)
 #(ret, us_out, serr) = git_cmd(["git", "ls-remote", repos[msg_list_id]["url"]])
 #(ret, ds_out, serr) = git_cmd(["git", "ls-remote", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"])])
 
