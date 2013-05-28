@@ -143,17 +143,25 @@ elif sout.strip() != repos[msg_list_id]["url"]:
 git_bare_cmd(git_cache_bare_dir, "fetch upstream")
 git_bare_cmd(git_cache_bare_dir, "push downstream")
 
+cwd=os.getcwd()
 git_cache_checkout_dir=os.path.join(git_cache_dir, "checkout", msg_list_id)
-(ret, sout) = git_cmd(["git", "clone", "file://%s"%git_cache_bare_dir, "--branch", repos[msg_list_id]["br"], git_cache_checkout_dir])
+if not os.path.isdir(git_cache_checkout_dir):
+	git_cmd(["git", "clone", repos[msg_list_id]["url"], "--branch", repos[msg_list_id]["br"], "--reference", git_cache_bare_dir, "--origin", "upstream", git_cache_checkout_dir])
 os.chdir(git_cache_checkout_dir)
-(ret, sout) = git_cmd(["git", "checkout", "-b", "branch-%s"%msg_quick_name, "--track", "origin/%s"%repos[msg_list_id]["br"]])
-(ret, sout) = git_cmd(["git", "am", msg_id_file])
-(ret, sout) = git_cmd(["git", "push", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"]), "HEAD:refs/for/%s"%repos[msg_list_id]["br"]])
-(ret, sout) = git_cmd(["git", "checkout", "origin/%s"%repos[msg_list_id]["br"]])
-(ret, sout) = git_cmd(["git", "branch", "-D", "branch-%s"%msg_quick_name])
+(ret, sout) = git_cmd(["git", "config", "--get", "remote.upstream.url"], expect_nonzero_return=True)
+if sout.strip() != repos[msg_list_id]["url"] or ret != 0:
+	os.chdir(cwd)
+	shutil.rmtree(git_cache_checkout_dir, ignore_errors=True)
+	git_cmd(["git", "clone", repos[msg_list_id]["url"], "--branch", repos[msg_list_id]["br"], "--reference", git_cache_bare_dir, "--origin", "upstream", git_cache_checkout_dir])
+	os.chdir(git_cache_checkout_dir)
+git_cmd(["git", "checkout", "-b", "branch-%s"%msg_quick_name, "--track", "upstream/%s"%repos[msg_list_id]["br"]])
+git_cmd(["git", "am", msg_id_file])
+git_cmd(["git", "push", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"]), "HEAD:refs/for/%s"%repos[msg_list_id]["br"]])
+git_cmd(["git", "checkout", "upstream/%s"%repos[msg_list_id]["br"]])
+git_cmd(["git", "branch", "-D", "branch-%s"%msg_quick_name])
+
+# remove the msg id directory
 shutil.rmtree(msg_id_dir, ignore_errors=True)
-#(ret, us_out, serr) = git_cmd(["git", "ls-remote", repos[msg_list_id]["url"]])
-#(ret, ds_out, serr) = git_cmd(["git", "ls-remote", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"])])
 
 """
 for ref in msg_refs:
