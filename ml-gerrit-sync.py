@@ -51,30 +51,39 @@ if len(msg_str)==0:
 	os.remove(msg_quick_path)
 	sys.exit(1)
 
-def git_cmd(cmd, stdin=None):
+def git_cmd(cmd, stdin=None, expect_nonzero_return=False):
 	"""\
 	Executes a git command and returns the result and displays error information,
 	if case. The function returns a tuple (return code, command stdout).
 	"""
-	# We are using the subprocess.Popen() class to run the command, because it's
-	# highly backwards compatible with Python 2.6 and onwards.
 	cmd_info=list(cmd)
 	if isinstance(stdin, file):
 		cmd_info.append("< %s" % stdin.name)
 	print >>sys.stderr, "--$", " ".join(cmd_info)
-
-	#pgit=subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=stdin)
 	pgit=subprocess.Popen(cmd, stdin=stdin, stdout=subprocess.PIPE)
-
-	# To be able to get the command's return code, we have to call the wait()
-	# method and wait for the program execution to finish.
 	(git_stdout, git_stderr)=pgit.communicate()
-
-	if pgit.returncode != 0:
+	if pgit.returncode != 0 and not expect_nonzero_return:
 		print >>sys.stderr, "Error: Git command returned non-zero exit code (%d)" % pgit.returncode
 		print >>sys.stderr, "Could not run git command. Giving up."
 		sys.exit(3)
 	return (pgit.returncode, git_stdout)
+
+def git_bare_cmd(bare_dir, cmd, stdin=None, expect_nonzero_return=False):
+	"""\
+	Wrapper for the git_cmd method, that automatically works with a base git
+	directory, adding --git-dir to each command. The cmd parameter can be a list,
+	like the git_cmd function, or can be a single string, to increase readability.
+	"""
+	g_cmd=["git", "--git-dir", bare_dir]
+	if isinstance(cmd, list):
+		g_cmd.extend(cmd)
+	elif isinstance(cmd, str):
+		scmd=cmd.split()
+		if len(scmd)==1:
+			g_cmd.append(cmd)
+		else:
+			g_cmd.extend(scmd)
+	return git_cmd(g_cmd, stdin, expect_nonzero_return)
 
 import subprocess
 import email
@@ -103,7 +112,6 @@ if msg_list_id == None:
 	sys.exit(4)
 
 msg_id_dir=os.path.join(msg_dir, msg_list_id, msg_id)
-#msg_id_file=os.path.join(msg_id_dir, "msg-%s"%msg_quick_name)
 msg_id_file=os.path.join(msg_id_dir, "eml")
 
 if os.path.exists(msg_id_dir):
@@ -116,14 +124,24 @@ os.rename("%s-msg"%msg_quick_path, os.path.join(msg_id_dir, "git-mailinfo-msg"))
 os.rename("%s-patch"%msg_quick_path, os.path.join(msg_id_dir, "git-mailinfo-patch"))
 
 git_cache_bare_dir=os.path.join(git_cache_dir, "bare", msg_list_id)
-(ret, sout) = git_cmd(["git", "init", "--bare", git_cache_bare_dir])
-# git --git-dir /home/alin/Downloads/git/bare/openembedded-core@lists.openembedded.org remote
-#(ret, sout) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote"])
-#remotes=sout.split()
-(ret, sout) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=fetch", "upstream", repos[msg_list_id]["url"]])
-(ret, sout) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=push", "downstream", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"])])
-(ret, sout) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "fetch", "upstream"])
-(ret, sout) = git_cmd(["git", "--git-dir", git_cache_bare_dir, "push", "downstream"])
+git_cmd(["git", "init", "--bare", git_cache_bare_dir])
+(ret, sout) = git_bare_cmd(git_cache_bare_dir, "config --get remote.upstream.url", expect_nonzero_return=True)
+if ret != 0: # remote "upstream" doesn't exist
+	git_bare_cmd(git_cache_bare_dir, "remote add --mirror=fetch upstream %s" % repos[msg_list_id]["url"])
+elif sout.strip() != repos[msg_list_id]["url"]:
+	git_bare_cmd(git_cache_bare_dir, "remote remove upstream")
+	git_bare_cmd(git_cache_bare_dir, "remote add --mirror=fetch upstream %s" % repos[msg_list_id]["url"])
+
+(ret, sout) = git_bare_cmd(git_cache_bare_dir, "config --get remote.downstream.url", expect_nonzero_return=True)
+if ret != 0: # remote "downstream" doesn't exist
+	git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=push", "downstream", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"])])
+elif sout.strip() != repos[msg_list_id]["url"]:
+	# safe way: remove old remote, add the new one
+	git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "remove", "downstream"])
+	git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=push", "downstream", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"])])
+
+git_bare_cmd(git_cache_bare_dir, "fetch upstream")
+git_bare_cmd(git_cache_bare_dir, "push downstream")
 
 git_cache_checkout_dir=os.path.join(git_cache_dir, "checkout", msg_list_id)
 (ret, sout) = git_cmd(["git", "clone", "file://%s"%git_cache_bare_dir, "--branch", repos[msg_list_id]["br"], git_cache_checkout_dir])
