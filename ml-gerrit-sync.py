@@ -8,7 +8,7 @@ repos = {
 	"bitbake-devel@lists.openembedded.org": {
 		"url": "git://git.openembedded.org/bitbake",
 		"prj": "bitbake",
-		"br": "devel"
+		"br": "master"
 	},
 	"openembedded-core@lists.openembedded.org": {
 		"url": "git://git.openembedded.org/openembedded-core",
@@ -18,12 +18,12 @@ repos = {
 	"poky@yoctoproject.org": {
 		"url": "git://git.yoctoproject.org/poky",
 		"prj": "poky",
-		"br": "devel"
+		"br": "master"
 	},
 	"webhob@yoctoproject.org": {
 		"url": "git://git.yoctoproject.org/webhob",
 		"prj": "webhob",
-		"br": "devel"
+		"br": "master"
 	}
 }
 
