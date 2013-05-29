@@ -125,17 +125,17 @@ os.rename("%s-patch"%msg_quick_path, os.path.join(msg_id_dir, "git-mailinfo-patc
 
 git_cache_bare_dir=os.path.join(git_cache_dir, "bare", msg_list_id)
 git_cmd(["git", "init", "--bare", git_cache_bare_dir])
-(ret, sout) = git_bare_cmd(git_cache_bare_dir, "config --get remote.upstream.url", expect_nonzero_return=True)
+(ret, out) = git_bare_cmd(git_cache_bare_dir, "config --get remote.upstream.url", expect_nonzero_return=True)
 if ret != 0: # remote "upstream" doesn't exist
 	git_bare_cmd(git_cache_bare_dir, "remote add --mirror=fetch upstream %s" % repos[msg_list_id]["url"])
-elif sout.strip() != repos[msg_list_id]["url"]:
+elif out.strip() != repos[msg_list_id]["url"]:
 	git_bare_cmd(git_cache_bare_dir, "remote remove upstream")
 	git_bare_cmd(git_cache_bare_dir, "remote add --mirror=fetch upstream %s" % repos[msg_list_id]["url"])
 
-(ret, sout) = git_bare_cmd(git_cache_bare_dir, "config --get remote.downstream.url", expect_nonzero_return=True)
+(ret, out) = git_bare_cmd(git_cache_bare_dir, "config --get remote.downstream.url", expect_nonzero_return=True)
 if ret != 0: # remote "downstream" doesn't exist
 	git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=push", "downstream", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"])])
-elif sout.strip() != repos[msg_list_id]["url"]:
+elif out.strip() != repos[msg_list_id]["url"]:
 	# safe way: remove old remote, add the new one
 	git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "remove", "downstream"])
 	git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=push", "downstream", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"])])
@@ -148,15 +148,18 @@ git_cache_checkout_dir=os.path.join(git_cache_dir, "checkout", msg_list_id)
 if not os.path.isdir(git_cache_checkout_dir):
 	git_cmd(["git", "clone", repos[msg_list_id]["url"], "--branch", repos[msg_list_id]["br"], "--reference", git_cache_bare_dir, "--origin", "upstream", git_cache_checkout_dir])
 os.chdir(git_cache_checkout_dir)
-(ret, sout) = git_cmd(["git", "config", "--get", "remote.upstream.url"], expect_nonzero_return=True)
-if sout.strip() != repos[msg_list_id]["url"] or ret != 0:
+(ret, out) = git_cmd(["git", "config", "--get", "remote.upstream.url"], expect_nonzero_return=True)
+if out.strip() != repos[msg_list_id]["url"] or ret != 0:
 	os.chdir(cwd)
 	shutil.rmtree(git_cache_checkout_dir, ignore_errors=True)
 	git_cmd(["git", "clone", repos[msg_list_id]["url"], "--branch", repos[msg_list_id]["br"], "--reference", git_cache_bare_dir, "--origin", "upstream", git_cache_checkout_dir])
 	os.chdir(git_cache_checkout_dir)
 git_cmd(["git", "checkout", "-b", "branch-%s"%msg_quick_name, "--track", "upstream/%s"%repos[msg_list_id]["br"]])
-git_cmd(["git", "am", msg_id_file])
-git_cmd(["git", "push", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"]), "HEAD:refs/for/%s"%repos[msg_list_id]["br"]])
+(ret, out) = git_cmd(["git", "am", msg_id_file], expect_nonzero_return=True)
+if ret != 0:
+	git_cmd(["git", "am", "--abort"])
+else:
+	git_cmd(["git", "push", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"]), "HEAD:refs/for/%s"%repos[msg_list_id]["br"]])
 git_cmd(["git", "checkout", "upstream/%s"%repos[msg_list_id]["br"]])
 git_cmd(["git", "branch", "-D", "branch-%s"%msg_quick_name])
 
