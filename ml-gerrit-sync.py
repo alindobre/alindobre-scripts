@@ -1,5 +1,13 @@
 #!/usr/bin/env python
 
+import time
+import sys
+import os
+import shutil
+import subprocess
+import email
+import email.header
+
 
 msg_dir="/home/alin/Downloads/Maildir"
 gerrit_base_url="ssh://localgerrit"
@@ -27,10 +35,82 @@ repos = {
 	}
 }
 
-import time
-import sys
-import os
-import shutil
+class G():
+	expect_nonzero_return=False
+	proc=None
+	bare=None
+	stdout=None
+	stderr=None
+	stdin=None
+	ret=None
+
+	def __init__(self, bare=None, wd=os.getcwd(), init=False):
+		self.wd=wd
+		print "Git working directory: %s" % self.wd
+		if init:
+			if bare:
+				self.xw("init --bare %s"%bare)
+				print self.stdout
+			else:
+				self.xw("init %s"%self.wd)
+				print self.stdout
+		self.bare=bare
+		if self.bare:
+			print >>sys.stderr, "Git bare repository in %s"%self.bare
+
+	def _gitcmd(self, cmd, wd=True):
+		cwd=None
+		if wd:
+			cwd=self.wd
+		g_cmd=["git"]
+		if self.bare:
+			g_cmd.extend(["--git-dir", self.bare])
+		if isinstance(cmd, list):
+			g_cmd.extend(cmd)
+		elif isinstance(cmd, str):
+			scmd=cmd.split()
+			if len(scmd)==1:
+				g_cmd.append(cmd)
+			else:
+				g_cmd.extend(scmd)
+		cmd_info=list(g_cmd)
+		if isinstance(self.stdin, file):
+			cmd_info.append("< %s" % self.stdin.name)
+		print >>sys.stderr, "--$", " ".join(cmd_info)
+		self.proc=subprocess.Popen(g_cmd, stdin=self.stdin, stdout=subprocess.PIPE, cwd=cwd)
+		(self.stdout, self.stderr)=self.proc.communicate()
+		self.ret=self.proc.returncode
+
+	def _check(self):
+		if self.ret != 0 and not self.expect_nonzero_return:
+			print >>sys.stderr, "Error: Git command returned non-zero exit code (%d)" % self.ret
+			sys.exit(3)
+
+	def x(self, cmd):
+		self._gitcmd(cmd, wd=True)
+		self._check()
+
+	def xw(self, cmd):
+		self._gitcmd(cmd, wd=False)
+		self._check()
+
+	def xe(self, cmd):
+		self._gitcmd(cmd, wd=True)
+
+	def remote(self, remote_name, remote_url, remote_type):
+		self.xe("config --get remote.%s.url"%remote_name)
+		if self.stdout.strip() != remote_url and self.ret == 0:
+			self.x("remote remove upstream")
+		if self.ret != 0 or (self.stdout.strip() != remote_url and self.ret == 0):
+			self.x("remote add --mirror=%s %s %s" % (remote_type, remote_name, remote_url))
+
+	def clone(self, url, branch, reference, origin, checkout_dir):
+		self.clone_url=url
+		self.clone_branch=branch
+		self.clone_reference=reference
+		self.clone_origin=origin
+		self.clone_dir=checkout_dir
+		self.xw(["clone", url, "--branch", branch, "--reference", reference, "--origin", origin, checkout_dir])
 
 msg_quick_name="%.2f.eml"%time.time()
 msg_quick_path=os.path.join(msg_dir, msg_quick_name)
@@ -51,45 +131,9 @@ if len(msg_str)==0:
 	os.remove(msg_quick_path)
 	sys.exit(1)
 
-def git_cmd(cmd, stdin=None, expect_nonzero_return=False):
-	"""\
-	Executes a git command and returns the result and displays error information,
-	if case. The function returns a tuple (return code, command stdout).
-	"""
-	cmd_info=list(cmd)
-	if isinstance(stdin, file):
-		cmd_info.append("< %s" % stdin.name)
-	print >>sys.stderr, "--$", " ".join(cmd_info)
-	pgit=subprocess.Popen(cmd, stdin=stdin, stdout=subprocess.PIPE)
-	(git_stdout, git_stderr)=pgit.communicate()
-	if pgit.returncode != 0 and not expect_nonzero_return:
-		print >>sys.stderr, "Error: Git command returned non-zero exit code (%d)" % pgit.returncode
-		print >>sys.stderr, "Could not run git command. Giving up."
-		sys.exit(3)
-	return (pgit.returncode, git_stdout)
-
-def git_bare_cmd(bare_dir, cmd, stdin=None, expect_nonzero_return=False):
-	"""\
-	Wrapper for the git_cmd method, that automatically works with a base git
-	directory, adding --git-dir to each command. The cmd parameter can be a list,
-	like the git_cmd function, or can be a single string, to increase readability.
-	"""
-	g_cmd=["git", "--git-dir", bare_dir]
-	if isinstance(cmd, list):
-		g_cmd.extend(cmd)
-	elif isinstance(cmd, str):
-		scmd=cmd.split()
-		if len(scmd)==1:
-			g_cmd.append(cmd)
-		else:
-			g_cmd.extend(scmd)
-	return git_cmd(g_cmd, stdin, expect_nonzero_return)
-
-import subprocess
-import email
-import email.header
-
-git_cmd(["git", "mailinfo", "%s-msg"%msg_quick_path, "%s-patch"%msg_quick_path], open(msg_quick_path))
+git=G()
+git.stdin=open(msg_quick_path)
+git.x("mailinfo %s-msg %s-patch"%(msg_quick_path,msg_quick_path))
 if os.stat("%s-patch"%msg_quick_path).st_size == 0:
 	os.remove(msg_quick_path)
 	os.remove("%s-msg"%msg_quick_path)
@@ -124,54 +168,30 @@ os.rename("%s-msg"%msg_quick_path, os.path.join(msg_id_dir, "git-mailinfo-msg"))
 os.rename("%s-patch"%msg_quick_path, os.path.join(msg_id_dir, "git-mailinfo-patch"))
 
 git_cache_bare_dir=os.path.join(git_cache_dir, "bare", msg_list_id)
-git_cmd(["git", "init", "--bare", git_cache_bare_dir])
-(ret, out) = git_bare_cmd(git_cache_bare_dir, "config --get remote.upstream.url", expect_nonzero_return=True)
-if ret != 0: # remote "upstream" doesn't exist
-	git_bare_cmd(git_cache_bare_dir, "remote add --mirror=fetch upstream %s" % repos[msg_list_id]["url"])
-elif out.strip() != repos[msg_list_id]["url"]:
-	git_bare_cmd(git_cache_bare_dir, "remote remove upstream")
-	git_bare_cmd(git_cache_bare_dir, "remote add --mirror=fetch upstream %s" % repos[msg_list_id]["url"])
+git=G(bare=git_cache_bare_dir, wd=git_cache_bare_dir, init=True)
 
-(ret, out) = git_bare_cmd(git_cache_bare_dir, "config --get remote.downstream.url", expect_nonzero_return=True)
-if ret != 0: # remote "downstream" doesn't exist
-	git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=push", "downstream", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"])])
-elif out.strip() != repos[msg_list_id]["url"]:
-	# safe way: remove old remote, add the new one
-	git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "remove", "downstream"])
-	git_cmd(["git", "--git-dir", git_cache_bare_dir, "remote", "add", "--mirror=push", "downstream", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"])])
+git.remote("upstream", repos[msg_list_id]["url"], "fetch")
+git.remote("downstream", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"]), "push")
+git.x("fetch upstream")
+git.x("push downstream")
 
-git_bare_cmd(git_cache_bare_dir, "fetch upstream")
-git_bare_cmd(git_cache_bare_dir, "push downstream")
-
-cwd=os.getcwd()
 git_cache_checkout_dir=os.path.join(git_cache_dir, "checkout", msg_list_id)
+git=G(wd=git_cache_checkout_dir)
 if not os.path.isdir(git_cache_checkout_dir):
-	git_cmd(["git", "clone", repos[msg_list_id]["url"], "--branch", repos[msg_list_id]["br"], "--reference", git_cache_bare_dir, "--origin", "upstream", git_cache_checkout_dir])
-os.chdir(git_cache_checkout_dir)
-(ret, out) = git_cmd(["git", "config", "--get", "remote.upstream.url"], expect_nonzero_return=True)
-if out.strip() != repos[msg_list_id]["url"] or ret != 0:
-	os.chdir(cwd)
+	git.clone(repos[msg_list_id]["url"], repos[msg_list_id]["br"], git_cache_bare_dir, "upstream", git_cache_checkout_dir)
+git.xe("config --get remote.upstream.url")
+if git.stdout.strip() != repos[msg_list_id]["url"] or git.ret != 0:
 	shutil.rmtree(git_cache_checkout_dir, ignore_errors=True)
-	git_cmd(["git", "clone", repos[msg_list_id]["url"], "--branch", repos[msg_list_id]["br"], "--reference", git_cache_bare_dir, "--origin", "upstream", git_cache_checkout_dir])
-	os.chdir(git_cache_checkout_dir)
-git_cmd(["git", "checkout", "-b", "branch-%s"%msg_quick_name, "--track", "upstream/%s"%repos[msg_list_id]["br"]])
-(ret, out) = git_cmd(["git", "am", msg_id_file], expect_nonzero_return=True)
-if ret != 0:
-	git_cmd(["git", "am", "--abort"])
+	git.clone(repos[msg_list_id]["url"], repos[msg_list_id]["br"], git_cache_bare_dir, "upstream", git_cache_checkout_dir)
+git.x(["checkout", "-b", "branch-%s"%msg_quick_name, "--track", "upstream/%s"%repos[msg_list_id]["br"]])
+git.xe("am %s" % msg_id_file)
+if git.ret != 0:
+	git.x("am --abort")
 else:
-	git_cmd(["git", "push", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"]), "HEAD:refs/for/%s"%repos[msg_list_id]["br"]])
-git_cmd(["git", "checkout", "upstream/%s"%repos[msg_list_id]["br"]])
-git_cmd(["git", "branch", "-D", "branch-%s"%msg_quick_name])
+	git.x("push %s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"]), "HEAD:refs/for/%s"%repos[msg_list_id]["br"])
+git.x("checkout upstream/%s"%repos[msg_list_id]["br"])
+git.x("branch -D branch-%s"%msg_quick_name)
 
 # remove the msg id directory
 shutil.rmtree(msg_id_dir, ignore_errors=True)
 
-"""
-for ref in msg_refs:
-	print >>sys.stderr, "Processing reference: %s" % ref
-	if os.path.isdir(os.path.join(msg_dir, msg_list_id, ref)):
-		print >>sys.stderr, "%s -> %s" % (msg_id_file, os.path.join(msg_dir, msg_list_id, ref, "ref-%s"%msg_id))
-		os.symlink(msg_id_file, os.path.join(msg_dir, msg_list_id, ref, "ref-%s"%msg_id))
-	else:
-		print >>sys.stderr, "Reference msg id doesn't exist: %s" % ref
-"""
