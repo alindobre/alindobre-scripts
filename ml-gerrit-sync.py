@@ -159,7 +159,7 @@ msg_id_dir=os.path.join(msg_dir, msg_list_id, msg_id)
 msg_id_file=os.path.join(msg_id_dir, "eml")
 
 if os.path.exists(msg_id_dir):
-	print >>sys.stderr, "Something went wrong, there shouldn't be an already existent msg id directory"
+	print >>sys.stderr, "Something went wrong, already existent msg id directory:", msg_id_dir
 	sys.exit(2)
 
 os.makedirs(msg_id_dir)
@@ -188,7 +188,7 @@ git.xe("am %s" % msg_id_file)
 if git.ret != 0:
 	git.x("am --abort")
 else:
-	git.x("push %s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"]), "HEAD:refs/for/%s"%repos[msg_list_id]["br"])
+	git.x("push %s/%s HEAD:refs/for/%s" % (gerrit_base_url, repos[msg_list_id]["prj"], repos[msg_list_id]["br"]))
 git.x("checkout upstream/%s"%repos[msg_list_id]["br"])
 git.x("branch -D branch-%s"%msg_quick_name)
 
