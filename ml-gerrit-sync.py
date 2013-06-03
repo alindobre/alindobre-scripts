@@ -100,7 +100,7 @@ class G():
 	def remote(self, remote_name, remote_url, remote_type):
 		self.xe("config --get remote.%s.url"%remote_name)
 		if self.stdout.strip() != remote_url and self.ret == 0:
-			self.x("remote remove upstream")
+			self.x("remote remove %s"%remote_name)
 		if self.ret != 0 or (self.stdout.strip() != remote_url and self.ret == 0):
 			self.x("remote add --mirror=%s %s %s" % (remote_type, remote_name, remote_url))
 
@@ -112,86 +112,107 @@ class G():
 		self.clone_dir=checkout_dir
 		self.xw(["clone", url, "--branch", branch, "--reference", reference, "--origin", origin, checkout_dir])
 
-msg_quick_name="%.2f.eml"%time.time()
-msg_quick_path=os.path.join(msg_dir, msg_quick_name)
-if not os.path.isdir(msg_dir):
-	os.makedirs(msg_dir)
+class M():
+	def __init__(self, msg_dir):
+		self.id="%.2f"%time.time()
+		self.msg_dir=msg_dir
+		self.quick_name="%s.eml"%self.id
+		self.quick_path=os.path.join(self.msg_dir, self.quick_name)
+		self.msg=str()
+		self.msg_refs=list()
 
-msg_file=open(msg_quick_path, "w")
-msg_str=str()
-while True:
-	buf=sys.stdin.read()
-	if len(buf)==0:
-		break
-	msg_str+=buf
-	msg_file.write(buf)
-msg_file.close()
-if len(msg_str)==0:
-	print >>sys.stderr, "Refusing to create empty files"
-	os.remove(msg_quick_path)
-	sys.exit(1)
+		self._get_stdin()
+		if len(self.msg)==0:
+			print >>sys.stderr, "Refusing to create empty files"
+			os.remove(self.quick_path)
+			sys.exit(1)
 
-git=G()
-git.stdin=open(msg_quick_path)
-git.x("mailinfo %s-msg %s-patch"%(msg_quick_path,msg_quick_path))
-if os.stat("%s-patch"%msg_quick_path).st_size == 0:
-	os.remove(msg_quick_path)
-	os.remove("%s-msg"%msg_quick_path)
-	os.remove("%s-patch"%msg_quick_path)
-	print >>sys.stderr, "Message doesn't contain a patch."
-	sys.exit(0)
+		if not self._get_mailinfo():
+			print >>sys.stderr, "Message doesn't contain a patch."
+			sys.exit(0)
 
-msg = email.message_from_string(msg_str)
-msg_subj="".join([x[0] for x in email.header.decode_header(msg["subject"])])
-msg_refs=list()
-if msg["references"] != None:
-	msg_refs=[x.strip("<>") for x in msg["references"].split()]
-msg_id=msg["message-id"].strip("<>")
-msg_list_id=msg["X-BeenThere"]
-if msg_list_id==None and len(sys.argv)>1:
-	msg_list_id=sys.argv[1]
+		self._get_email_properties()
 
-if msg_list_id == None:
-	print >>sys.stderr, "Could not determine list ID. Giving up..."
-	sys.exit(4)
+		if self.msg_list_id == None:
+			print >>sys.stderr, "Could not determine list ID. Giving up..."
+			sys.exit(4)
 
-msg_id_dir=os.path.join(msg_dir, msg_list_id, msg_id)
-msg_id_file=os.path.join(msg_id_dir, "eml")
+	def _get_stdin(self):
+		if not os.path.isdir(self.msg_dir):
+			os.makedirs(self.msg_dir)
+		msg_file=open(self.quick_path, "w")
+		while True:
+			buf=sys.stdin.read()
+			if len(buf)==0:
+				break
+			self.msg+=buf
+			msg_file.write(buf)
+		msg_file.close()
 
-if os.path.exists(msg_id_dir):
-	print >>sys.stderr, "Something went wrong, already existent msg id directory:", msg_id_dir
-	sys.exit(2)
+	def _get_mailinfo(self):
+		git=G()
+		git.stdin=open(self.quick_path)
+		git.x("mailinfo %s-msg %s-patch"%(self.quick_path,self.quick_path))
+		if os.stat("%s-patch"%self.quick_path).st_size == 0:
+			os.remove(self.quick_path)
+			os.remove("%s-msg"%self.quick_path)
+			os.remove("%s-patch"%self.quick_path)
+			return False
+		return True
 
-os.makedirs(msg_id_dir)
-os.rename(msg_quick_path, msg_id_file)
-os.rename("%s-msg"%msg_quick_path, os.path.join(msg_id_dir, "git-mailinfo-msg"))
-os.rename("%s-patch"%msg_quick_path, os.path.join(msg_id_dir, "git-mailinfo-patch"))
+	def _get_email_properties(self):
+		msg = email.message_from_string(self.msg)
+		self.msg_subj="".join([x[0] for x in email.header.decode_header(msg["subject"])])
+		if msg["references"] != None:
+			self.msg_refs=[x.strip("<>") for x in msg["references"].split()]
+		self.msg_id=msg["message-id"].strip("<>")
+		self.msg_list_id=msg["X-BeenThere"]
 
-git_cache_bare_dir=os.path.join(git_cache_dir, "bare", msg_list_id)
-git=G(bare=git_cache_bare_dir, wd=git_cache_bare_dir, init=True)
+	def move_msg_id(self):
+		self.msg_id_dir=os.path.join(self.msg_dir, self.msg_list_id, self.msg_id)
+		self.msg_id_file=os.path.join(self.msg_id_dir, "eml")
 
-git.remote("upstream", repos[msg_list_id]["url"], "fetch")
-git.remote("downstream", "%s/%s" % (gerrit_base_url, repos[msg_list_id]["prj"]), "push")
-git.x("fetch upstream")
-git.x("push downstream")
+		if os.path.exists(self.msg_id_dir):
+			print >>sys.stderr, "Something went wrong, already existent msg id directory:", self.msg_id_dir
+			sys.exit(2)
 
-git_cache_checkout_dir=os.path.join(git_cache_dir, "checkout", msg_list_id)
-git=G(wd=git_cache_checkout_dir)
-if not os.path.isdir(git_cache_checkout_dir):
-	git.clone(repos[msg_list_id]["url"], repos[msg_list_id]["br"], git_cache_bare_dir, "upstream", git_cache_checkout_dir)
-git.xe("config --get remote.upstream.url")
-if git.stdout.strip() != repos[msg_list_id]["url"] or git.ret != 0:
-	shutil.rmtree(git_cache_checkout_dir, ignore_errors=True)
-	git.clone(repos[msg_list_id]["url"], repos[msg_list_id]["br"], git_cache_bare_dir, "upstream", git_cache_checkout_dir)
-git.x(["checkout", "-b", "branch-%s"%msg_quick_name, "--track", "upstream/%s"%repos[msg_list_id]["br"]])
-git.xe("am %s" % msg_id_file)
-if git.ret != 0:
-	git.x("am --abort")
-else:
-	git.x("push %s/%s HEAD:refs/for/%s" % (gerrit_base_url, repos[msg_list_id]["prj"], repos[msg_list_id]["br"]))
-git.x("checkout upstream/%s"%repos[msg_list_id]["br"])
-git.x("branch -D branch-%s"%msg_quick_name)
+		os.makedirs(self.msg_id_dir)
+		os.rename(self.quick_path, self.msg_id_file)
+		os.rename("%s-msg"%self.quick_path, os.path.join(self.msg_id_dir, "git-mailinfo-msg"))
+		os.rename("%s-patch"%self.quick_path, os.path.join(self.msg_id_dir, "git-mailinfo-patch"))
 
-# remove the msg id directory
-shutil.rmtree(msg_id_dir, ignore_errors=True)
+	def remove_msg_id(self):
+		# remove the msg id directory
+		shutil.rmtree(self.msg_id_dir, ignore_errors=True)
+
+if __name__=="__main__":
+	m=M(msg_dir)
+	m.move_msg_id()
+
+	git_cache_bare_dir=os.path.join(git_cache_dir, "bare", m.msg_list_id)
+	git=G(bare=git_cache_bare_dir, wd=git_cache_bare_dir, init=True)
+
+	git.remote("upstream", repos[m.msg_list_id]["url"], "fetch")
+	git.remote("downstream", "%s/%s" % (gerrit_base_url, repos[m.msg_list_id]["prj"]), "push")
+	git.x("fetch upstream")
+	git.x("push downstream")
+
+	git_cache_checkout_dir=os.path.join(git_cache_dir, "checkout", m.msg_list_id)
+	git=G(wd=git_cache_checkout_dir)
+	if not os.path.isdir(git_cache_checkout_dir):
+		git.clone(repos[m.msg_list_id]["url"], repos[m.msg_list_id]["br"], git_cache_bare_dir, "upstream", git_cache_checkout_dir)
+	git.xe("config --get remote.upstream.url")
+	if git.stdout.strip() != repos[m.msg_list_id]["url"] or git.ret != 0:
+		shutil.rmtree(git_cache_checkout_dir, ignore_errors=True)
+		git.clone(repos[m.msg_list_id]["url"], repos[m.msg_list_id]["br"], git_cache_bare_dir, "upstream", git_cache_checkout_dir)
+	git.x(["checkout", "-b", "branch-%s"%m.quick_name, "--track", "upstream/%s"%repos[m.msg_list_id]["br"]])
+	git.xe("am %s" % m.msg_id_file)
+	if git.ret != 0:
+		git.x("am --abort")
+	else:
+		git.x("push %s/%s HEAD:refs/for/%s" % (gerrit_base_url, repos[m.msg_list_id]["prj"], repos[m.msg_list_id]["br"]))
+	git.x("checkout upstream/%s"%repos[m.msg_list_id]["br"])
+	git.x("branch -D branch-%s"%m.quick_name)
+
+	m.remove_msg_id()
 
