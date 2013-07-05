@@ -1,4 +1,13 @@
 #!/usr/bin/env python
+"""\
+Script that synchronizes a maildir connected to a mailing list to a local
+gerrit instance
+
+Author: Alin Dobre <alinmd at gmail.com>
+
+The script (or portions of it) can be used, modified and distributed
+without any restrictions.
+"""
 
 import time
 import sys
