@@ -1,0 +1,4 @@
+KERNEL_ROOT=/mnt/data
+KERNEL_SOURCE=/home/alin/work/alindobre-linux
+FS_MOUNT_PLAIN=/mnt/fs
+FS_MOUNT_WRAP=/mnt/wrapfs
