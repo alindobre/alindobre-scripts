@@ -1,13 +1,13 @@
 #!/bin/bash -xe
+
 if [ "$1" != "-n" ]; then
 	if grep -qE ' /mnt/.*fs ' /etc/mtab; then
 		umount --detach-loop /mnt/{wrap,}fs
 	fi
 	rmmod wrapfs || :
-	#insmod /home/alin/rpmbuild/BUILD/kernel-3.9.fc19/linux-3.9.9-301.wrapfs2.fc19.x86_64/fs/wrapfs/wrapfs.ko
-	insmod /home/alin/work/linux/fs/wrapfs/wrapfs.ko
-	cp -va /home/alin/btrfs.bkp /home/alin/btrfs.loop
-	mount /home/alin/btrfs.loop /mnt/fs -o loop
+	insmod /mnt/data/wrapfs.ko
+	cp -va /mnt/data/btrfs.loop.orig /tmp/btrfs.loop
+	mount /tmp/btrfs.loop /mnt/fs -o loop
 	mount -t wrapfs /mnt/fs /mnt/wrapfs
 else
 	shift
