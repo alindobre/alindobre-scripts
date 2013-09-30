@@ -23,5 +23,7 @@ qemu-system-x86_64 \
 	-pidfile /tmp/qemu.pid -daemonize \
 
 ssh ${VM_SSH_HOSTNAME:?Please define} true
-rsync -av ${SANDBOX_ROOT}/ ${homedir}/guest/ ${VM_SSH_HOSTNAME}:${DATA_ROOT}/
+rsync -av --delete ${SANDBOX_ROOT}/ ${homedir}/guest/ ${VM_SSH_HOSTNAME}:${DATA_ROOT}/
 ssh ${VM_SSH_HOSTNAME} ${DATA_ROOT}/tests.sh
+read
+ssh ${VM_SSH_HOSTNAME} halt

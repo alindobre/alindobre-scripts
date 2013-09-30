@@ -10,3 +10,4 @@ Since there is a possibility where modifying the qemu disks from the host
 system would lead to disk corruption, the qcow2 primary disk is never touched
 by these scripts, nor mounted in any way.
 
+Prereq: users u1:1001 and u2:1002 must exist in the VM.
