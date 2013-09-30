@@ -8,7 +8,7 @@ homedir=${self%/*}
 
 rm -rfv ${SANDBOX_ROOT:?Please define}
 cd ${KERNEL_SOURCE:?Please define}
-make modules
+make -j5 bzImage modules
 make INSTALL_MOD_PATH=${SANDBOX_ROOT} modules_install
 
 qemu-system-x86_64 \

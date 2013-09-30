@@ -1,3 +1,3 @@
-KERNEL_SOURCE=/home/alin/work/alindobre-linux
+KERNEL_SOURCE=/home/alin/work/linux
 SANDBOX_ROOT=/home/alin/work/vm/sandbox
 VM_SSH_HOSTNAME=vm
