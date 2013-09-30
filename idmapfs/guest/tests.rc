@@ -1,0 +1,3 @@
+DATA_ROOT=/mnt/data
+FS_MOUNT_PLAIN=/mnt/fs
+FS_MOUNT_WRAP=/mnt/wrapfs

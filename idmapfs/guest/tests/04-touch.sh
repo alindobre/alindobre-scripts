@@ -2,7 +2,7 @@
 
 for x in /mnt/wrapfs/{dir/,other}file-$$.txt; do
 	echo "---- (sudo 1000) touch $x ---------"
-	sudo -u alin touch $x
+	sudo -u e1 touch $x
 done
 for x in /mnt/{,wrap,,wrap}fs ; do
 	for y in {dir/,other}file-$$.txt; do
