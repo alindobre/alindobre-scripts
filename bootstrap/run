@@ -1,0 +1,50 @@
+#!/bin/bash -ex
+
+set -a
+HOST=/mnt/data/lfs/chroot
+LFS_TGT=x86_64-lfs-linux-gnu
+LC_ALL=POSIX
+LFS=/mnt/lfs
+MAKEFLAGS='-j5'
+
+clean_mounts() {
+	cut -d' ' -f2 /proc/mounts \
+		| sort -r \
+		| while read M; do \
+				[[ ${M#$HOST$LFS/} != $M ]] && umount $M
+			done
+}
+
+for ARG in "$@"; do
+	case $ARG in
+	host)
+		. create-host
+		;;
+	lfs)
+		mkdir -pv $HOST/$LFS/tools/lfs
+		rsync -avH ./ $HOST/$LFS/tools/lfs/
+		chroot $HOST $LFS/tools/lfs/run lfs-chroot
+		;;
+	lfs-chroot)
+		. $LFS/tools/lfs/create-lfs
+		;;
+	arachsys)
+		git clone git://github.com/arachsys/abuild $HOST/$LFS/tmp/abuild
+		git clone git://github.com/arachsys/packages $HOST/$LFS/tmp/packages
+		trap clean_mounts ERR
+		mkdir -pv $HOST/$LFS/{sys,proc,dev}
+		mount -v --rbind /dev $HOST/$LFS/dev
+		mount -vt proc proc $HOST/$LFS/proc
+		mount -vt sysfs sysfs $HOST/$LFS/sys
+		chroot $HOST/$LFS /tools/bin/env -i \
+			HOME=/home/root \
+			TERM="$TERM" \
+			PATH=/bin \
+			/tools/bin/bash -xe /tools/lfs/run arachsys-chroot
+		clean_mounts
+		;;
+	arachsys-chroot)
+		. /tools/lfs/create-arachsys
+		;;
+	esac
+done
