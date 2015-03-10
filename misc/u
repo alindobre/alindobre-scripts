@@ -1,0 +1,12 @@
+#!/bin/bash -e
+# Performs a package update of my Funtoo system
+PS4='+$(date +%T)> '
+
+set -x
+emerge --sync
+layman -S
+eix-update
+emerge --update --deep --newuse --verbose --ask @world
+emerge --update --deep --newuse --with-bdeps=y --verbose --ask @world
+emerge --depclean --ask
+emerge --verbose --ask @preserved-rebuild
